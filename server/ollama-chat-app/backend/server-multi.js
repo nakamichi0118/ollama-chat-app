@@ -312,10 +312,10 @@ async function handleGeminiChat(message, model, history, res, files = []) {
         // Geminiモデル名のマッピング（2.5/1.5シリーズサポート）
         const modelMap = {
             'gemini-2.5-flash': 'gemini-2.5-flash',
-            'gemini-2.5-pro': 'gemini-2.5-pro',
+            'gemini-2.5-pro': 'gemini-2.5-pro', 
             'gemini-1.5-pro': 'gemini-1.5-pro',
             'gemini-1.5-flash': 'gemini-1.5-flash',
-            'gemini-flash': 'gemini-2.5-flash'  // 最新に変更
+            'gemini-flash': 'gemini-2.5-flash'  // 最新のFlashに変更
         };
         
         let modelName = modelMap[model] || 'gemini-2.5-flash';
