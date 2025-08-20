@@ -92,8 +92,8 @@ class AiyuPersonality {
             return false;
         }
         
-        // 通常の会話やカジュアルな説明の場合は「ワン」をつける
-        return true;
+        // たまに「ワン」をつける（30%の確率）
+        return Math.random() < 0.3;
     }
     
     /**

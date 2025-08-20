@@ -43,7 +43,8 @@ app.get('/api/models', async (req, res) => {
     const models = [];
     
     if (process.env.GEMINI_API_KEY) {
-        // models.push({ name: 'gemini-2.0-flash', provider: 'gemini', description: 'Google Gemini 2.0 Flash (最新・高速)' }); // まだ利用不可
+        models.push({ name: 'gemini-2.5-flash', provider: 'gemini', description: 'Google Gemini 2.5 Flash (最新・高速)' });
+        models.push({ name: 'gemini-2.5-pro', provider: 'gemini', description: 'Google Gemini 2.5 Pro (最新・高性能)' });
         models.push({ name: 'gemini-1.5-pro', provider: 'gemini', description: 'Google Gemini 1.5 Pro' });
         models.push({ name: 'gemini-1.5-flash', provider: 'gemini', description: 'Google Gemini 1.5 Flash' });
     }
@@ -308,15 +309,16 @@ async function handleGeminiChat(message, model, history, res, files = []) {
     }
     
     try {
-        // Geminiモデル名のマッピング（2.0/1.5シリーズサポート）
+        // Geminiモデル名のマッピング（2.5/1.5シリーズサポート）
         const modelMap = {
-            'gemini-2.0-flash': 'gemini-2.0-flash-exp',
+            'gemini-2.5-flash': 'gemini-2.5-flash',
+            'gemini-2.5-pro': 'gemini-2.5-pro',
             'gemini-1.5-pro': 'gemini-1.5-pro',
             'gemini-1.5-flash': 'gemini-1.5-flash',
-            'gemini-flash': 'gemini-2.0-flash-exp'  // 最新に変更
+            'gemini-flash': 'gemini-2.5-flash'  // 最新に変更
         };
         
-        let modelName = modelMap[model] || 'gemini-1.5-flash';
+        let modelName = modelMap[model] || 'gemini-2.5-flash';
         console.log(`Using Gemini model: ${modelName}`);
         console.log(`Files to process: ${files ? files.length : 0}`);
         
@@ -375,8 +377,18 @@ async function handleGeminiChat(message, model, history, res, files = []) {
         const startTime = Date.now();
         
         try {
-            // partsを使用してコンテンツを生成
-            const result = await geminiModel.generateContent(parts);
+            // partsを使用してコンテンツを生成（高速化設定）
+            const generationConfig = {
+                temperature: 0.7,
+                topK: 20,
+                topP: 0.8,
+                maxOutputTokens: 1024,  // 応答を短めに制限して高速化
+            };
+            
+            const result = await geminiModel.generateContent({
+                contents: [{ parts }],
+                generationConfig
+            });
             const response = await result.response;
             const text = response.text();
             
