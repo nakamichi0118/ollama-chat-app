@@ -43,7 +43,7 @@ app.get('/api/models', async (req, res) => {
     const models = [];
     
     if (process.env.GEMINI_API_KEY) {
-        models.push({ name: 'gemini-2.0-flash', provider: 'gemini', description: 'Google Gemini 2.0 Flash (最新・高速)' });
+        // models.push({ name: 'gemini-2.0-flash', provider: 'gemini', description: 'Google Gemini 2.0 Flash (最新・高速)' }); // まだ利用不可
         models.push({ name: 'gemini-1.5-pro', provider: 'gemini', description: 'Google Gemini 1.5 Pro' });
         models.push({ name: 'gemini-1.5-flash', provider: 'gemini', description: 'Google Gemini 1.5 Flash' });
     }
@@ -316,7 +316,7 @@ async function handleGeminiChat(message, model, history, res, files = []) {
             'gemini-flash': 'gemini-2.0-flash-exp'  // 最新に変更
         };
         
-        let modelName = modelMap[model] || 'gemini-2.0-flash-exp';
+        let modelName = modelMap[model] || 'gemini-1.5-flash';
         console.log(`Using Gemini model: ${modelName}`);
         console.log(`Files to process: ${files ? files.length : 0}`);
         
