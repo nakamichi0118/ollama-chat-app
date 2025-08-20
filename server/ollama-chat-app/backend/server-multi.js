@@ -43,8 +43,9 @@ app.get('/api/models', async (req, res) => {
     const models = [];
     
     if (process.env.GEMINI_API_KEY) {
+        models.push({ name: 'gemini-2.0-flash', provider: 'gemini', description: 'Google Gemini 2.0 Flash (最新・高速)' });
         models.push({ name: 'gemini-1.5-pro', provider: 'gemini', description: 'Google Gemini 1.5 Pro' });
-        models.push({ name: 'gemini-1.5-flash', provider: 'gemini', description: 'Google Gemini 1.5 Flash (高速)' });
+        models.push({ name: 'gemini-1.5-flash', provider: 'gemini', description: 'Google Gemini 1.5 Flash' });
     }
     
     if (process.env.OPENAI_API_KEY) {
@@ -307,14 +308,15 @@ async function handleGeminiChat(message, model, history, res, files = []) {
     }
     
     try {
-        // Geminiモデル名のマッピング（1.5シリーズのみサポート）
+        // Geminiモデル名のマッピング（2.0/1.5シリーズサポート）
         const modelMap = {
+            'gemini-2.0-flash': 'gemini-2.0-flash-exp',
             'gemini-1.5-pro': 'gemini-1.5-pro',
             'gemini-1.5-flash': 'gemini-1.5-flash',
-            'gemini-flash': 'gemini-1.5-flash'  // 後方互換性
+            'gemini-flash': 'gemini-2.0-flash-exp'  // 最新に変更
         };
         
-        let modelName = modelMap[model] || 'gemini-1.5-pro';
+        let modelName = modelMap[model] || 'gemini-2.0-flash-exp';
         console.log(`Using Gemini model: ${modelName}`);
         console.log(`Files to process: ${files ? files.length : 0}`);
         
