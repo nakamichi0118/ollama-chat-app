@@ -6,6 +6,7 @@ const axios = require('axios');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const EnhancedKnowledgeLoader = require('./knowledge-loader-enhanced');
 const AiyuPersonality = require('./aiyu-personality');
+const ResearchManager = require('./research-manager');
 const pdf = require('pdf-parse');
 
 const app = express();
@@ -17,6 +18,9 @@ let knowledgeLoader = null;
 
 // アイユーくん人格設定初期化
 const aiyuPersonality = new AiyuPersonality();
+
+// リサーチマネージャー初期化
+const researchManager = new ResearchManager();
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
@@ -129,11 +133,12 @@ app.post('/api/knowledge/upload', async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-    const { message, model = 'gemini-pro', history = [], userProfile, useKnowledge = false, files = [] } = req.body;
+    const { message, model = 'gemini-pro', history = [], userProfile, useKnowledge = false, usePersonality = false, files = [] } = req.body;
     
     console.log('======================================');
     console.log('Chat request received:');
     console.log('  useKnowledge:', useKnowledge, typeof useKnowledge);
+    console.log('  usePersonality:', usePersonality, typeof usePersonality);
     console.log('  model:', model);
     console.log('  message preview:', message.substring(0, 50));
     console.log('  files count:', files.length);
@@ -163,6 +168,26 @@ app.post('/api/chat', async (req, res) => {
     
     try {
         let enhancedMessage = message;
+        
+        // リサーチ機能：最新情報が必要かチェック
+        console.log('🔍 Checking if research is needed...');
+        const researchInfo = researchManager.analyzeMessage(message);
+        
+        if (researchInfo.needsResearch) {
+            console.log(`📊 Research required: ${researchInfo.info}`);
+            console.log(`🔎 Query: ${researchInfo.query}`);
+            
+            try {
+                const researchData = await researchManager.performWebSearch(researchInfo.query, researchInfo.type);
+                enhancedMessage = researchManager.enhanceMessage(message, researchData, researchInfo.type);
+                console.log('✅ Research completed and message enhanced');
+            } catch (researchError) {
+                console.error('Research error:', researchError);
+                // リサーチエラーの場合は元のメッセージを使用
+            }
+        } else {
+            console.log('⚪ No research needed - proceeding with original message');
+        }
         
         // 添付ファイルがある場合、メッセージに追加
         if (files && files.length > 0) {
@@ -279,13 +304,13 @@ app.post('/api/chat', async (req, res) => {
         
         switch (provider) {
             case 'gemini':
-                await handleGeminiChat(enhancedMessage, model, history, res, files);
+                await handleGeminiChat(enhancedMessage, model, history, res, files, usePersonality);
                 break;
             case 'openai':
-                await handleOpenAIChat(enhancedMessage, model, history, res, files);
+                await handleOpenAIChat(enhancedMessage, model, history, res, files, usePersonality);
                 break;
             case 'ollama':
-                await handleOllamaChat(enhancedMessage, model, history, res, files);
+                await handleOllamaChat(enhancedMessage, model, history, res, files, usePersonality);
                 break;
             default:
                 throw new Error('Unknown provider');
@@ -303,7 +328,7 @@ function getProviderFromModel(model) {
     return 'ollama';
 }
 
-async function handleGeminiChat(message, model, history, res, files = []) {
+async function handleGeminiChat(message, model, history, res, files = [], usePersonality = false) {
     if (!genAI) {
         throw new Error('Gemini API key not configured');
     }
@@ -395,12 +420,17 @@ async function handleGeminiChat(message, model, history, res, files = []) {
             console.log(`Got response in ${Date.now() - startTime}ms`);
             console.log(`Response preview: ${text.substring(0, 100)}...`);
             
-            // アイユーくんの人格を適用（「ワン」の追加判定）
-            const enhancedText = aiyuPersonality.processResponse(message, text);
-            console.log(`Personality applied: ${enhancedText.substring(0, 100)}...`);
+            // アイユーくんの人格を適用（usePersonalityフラグに応じて）
+            let finalText = text;
+            if (usePersonality) {
+                finalText = aiyuPersonality.processResponse(message, text);
+                console.log(`Personality applied: ${finalText.substring(0, 100)}...`);
+            } else {
+                console.log(`Personality disabled - raw response sent`);
+            }
             
             // レスポンスを送信
-            res.write(`data: ${JSON.stringify({ content: enhancedText })}\n\n`);
+            res.write(`data: ${JSON.stringify({ content: finalText })}\n\n`);
             res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
             res.end();
         } catch (apiError) {
@@ -416,7 +446,7 @@ async function handleGeminiChat(message, model, history, res, files = []) {
     }
 }
 
-async function handleOpenAIChat(message, model, history, res, files = []) {
+async function handleOpenAIChat(message, model, history, res, files = [], usePersonality = false) {
     if (!process.env.OPENAI_API_KEY) {
         throw new Error('OpenAI API key not configured');
     }
@@ -465,7 +495,7 @@ async function handleOpenAIChat(message, model, history, res, files = []) {
     });
 }
 
-async function handleOllamaChat(message, model, history, res, files = []) {
+async function handleOllamaChat(message, model, history, res, files = [], usePersonality = false) {
     const prompt = formatPrompt(message, history);
     
     const response = await axios.post(`${OLLAMA_HOST}/api/generate`, {
