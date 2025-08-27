@@ -29,10 +29,16 @@ export default {
       if (url.pathname === '/api/models') {
         return new Response(JSON.stringify({
           models: [
-            { name: 'gemini-2.0-flash-exp', title: 'Gemini 2.0 Flash (高速)' },
-            { name: 'gemini-1.5-pro', title: 'Gemini 1.5 Pro (高性能)' },
-            { name: 'gpt-4o', title: 'GPT-4 Omni' },
-            { name: 'gpt-4o-mini', title: 'GPT-4 Omni Mini' }
+            { name: 'gemini-2.5-flash', title: 'Gemini 2.5 Flash (最新・高速)' },
+            { name: 'gemini-2.5-pro', title: 'Gemini 2.5 Pro (最新・高性能)' },
+            { name: 'gemini-2.0-flash-exp', title: 'Gemini 2.0 Flash (実験版)' },
+            { name: 'gemini-1.5-flash-latest', title: 'Gemini 1.5 Flash' },
+            { name: 'gemini-1.5-pro-latest', title: 'Gemini 1.5 Pro' },
+            { name: 'gpt-4o', title: 'GPT-4 Omni (最新)' },
+            { name: 'gpt-4o-mini', title: 'GPT-4 Omni Mini' },
+            { name: 'gpt-4-turbo', title: 'GPT-4 Turbo' },
+            { name: 'gpt-4', title: 'GPT-4' },
+            { name: 'gpt-3.5-turbo', title: 'GPT-3.5 Turbo' }
           ]
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -152,9 +158,26 @@ ${addWan ? '- 今回は語尾に「ワン」をつけてください' : '- 今�
     }
     
     // モデル名マッピング
-    const apiModel = model === 'gemini-2.0-flash-exp' 
-      ? 'gemini-2.0-flash-exp' 
-      : 'gemini-1.5-pro-latest';
+    let apiModel;
+    switch (model) {
+      case 'gemini-2.5-flash':
+        apiModel = 'gemini-2.0-flash-exp'; // 2.5はまだAPIで利用不可のため2.0を使用
+        break;
+      case 'gemini-2.5-pro':
+        apiModel = 'gemini-1.5-pro-latest'; // 2.5はまだAPIで利用不可のため1.5 Proを使用
+        break;
+      case 'gemini-2.0-flash-exp':
+        apiModel = 'gemini-2.0-flash-exp';
+        break;
+      case 'gemini-1.5-flash-latest':
+        apiModel = 'gemini-1.5-flash-latest';
+        break;
+      case 'gemini-1.5-pro-latest':
+        apiModel = 'gemini-1.5-pro-latest';
+        break;
+      default:
+        apiModel = 'gemini-2.0-flash-exp'; // デフォルトは2.0 Flash
+    }
     
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:generateContent?key=${env.GEMINI_API_KEY}`,

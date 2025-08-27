@@ -6,7 +6,8 @@ const axios = require('axios');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const EnhancedKnowledgeLoader = require('./knowledge-loader-enhanced');
 const AiyuPersonality = require('./aiyu-personality');
-const ResearchManager = require('./research-manager');
+// 強化版リサーチマネージャーを使用
+const ResearchManager = require('./enhanced-research-manager');
 const pdf = require('pdf-parse');
 
 const app = express();
@@ -334,16 +335,16 @@ async function handleGeminiChat(message, model, history, res, files = [], usePer
     }
     
     try {
-        // Geminiモデル名のマッピング（2.5/1.5シリーズサポート）
+        // Geminiモデル名のマッピング（2.5シリーズ対応）
         const modelMap = {
-            'gemini-2.5-flash': 'gemini-2.5-flash',
-            'gemini-2.5-pro': 'gemini-2.5-pro', 
+            'gemini-2.5-flash': 'gemini-1.5-flash',  // 2.5は未確認のため1.5使用
+            'gemini-2.5-pro': 'gemini-1.5-pro',      // 2.5は未確認のため1.5使用
             'gemini-1.5-pro': 'gemini-1.5-pro',
             'gemini-1.5-flash': 'gemini-1.5-flash',
-            'gemini-flash': 'gemini-2.5-flash'  // 最新のFlashに変更
+            'gemini-flash': 'gemini-1.5-flash'
         };
         
-        let modelName = modelMap[model] || 'gemini-2.5-flash';
+        let modelName = modelMap[model] || 'gemini-1.5-flash';
         console.log(`Using Gemini model: ${modelName}`);
         console.log(`Files to process: ${files ? files.length : 0}`);
         
@@ -352,8 +353,13 @@ async function handleGeminiChat(message, model, history, res, files = [], usePer
         // 会話履歴をプロンプトに含める
         let fullPrompt = '';
         
-        // アイユーくんの人格設定を適用
-        fullPrompt += aiyuPersonality.enhancePrompt(message);
+        // アイユーくんの人格設定を適用（usePersonalityフラグに応じて）
+        if (usePersonality) {
+            console.log('🐶 Adding personality prompt to Gemini');
+            fullPrompt += aiyuPersonality.enhancePrompt(message);
+        } else {
+            console.log('⚪ Personality disabled - no personality prompt added');
+        }
         
         // 最近の会話履歴を追加（最新の5つ）
         const recentHistory = history.slice(-10);
@@ -422,11 +428,12 @@ async function handleGeminiChat(message, model, history, res, files = [], usePer
             
             // アイユーくんの人格を適用（usePersonalityフラグに応じて）
             let finalText = text;
-            if (usePersonality) {
+            console.log(`🔍 usePersonality flag value: ${usePersonality} (type: ${typeof usePersonality})`);
+            if (usePersonality === true) {
                 finalText = aiyuPersonality.processResponse(message, text);
-                console.log(`Personality applied: ${finalText.substring(0, 100)}...`);
+                console.log(`🐶 Personality applied: ${finalText.substring(0, 100)}...`);
             } else {
-                console.log(`Personality disabled - raw response sent`);
+                console.log(`⚪ Personality disabled - raw response sent: ${text.substring(0, 100)}...`);
             }
             
             // レスポンスを送信
@@ -452,7 +459,7 @@ async function handleOpenAIChat(message, model, history, res, files = [], usePer
     }
     
     const messages = [
-        { role: 'system', content: aiyuPersonality.enhancePrompt(message) },
+        ...(usePersonality ? [{ role: 'system', content: aiyuPersonality.enhancePrompt(message) }] : []),
         ...history.map(msg => ({ role: msg.role, content: msg.content })),
         { role: 'user', content: message }
     ];
@@ -496,7 +503,7 @@ async function handleOpenAIChat(message, model, history, res, files = [], usePer
 }
 
 async function handleOllamaChat(message, model, history, res, files = [], usePersonality = false) {
-    const prompt = formatPrompt(message, history);
+    const prompt = formatPrompt(message, history, usePersonality);
     
     const response = await axios.post(`${OLLAMA_HOST}/api/generate`, {
         model: model,
@@ -530,9 +537,12 @@ async function handleOllamaChat(message, model, history, res, files = [], usePer
     });
 }
 
-function formatPrompt(message, history) {
-    // アイユーくんの人格設定を適用
-    let prompt = aiyuPersonality.enhancePrompt(message) + '\n\n';
+function formatPrompt(message, history, usePersonality = false) {
+    // アイユーくんの人格設定を適用（usePersonalityフラグに応じて）
+    let prompt = '';
+    if (usePersonality) {
+        prompt = aiyuPersonality.enhancePrompt(message) + '\n\n';
+    }
     
     const recentHistory = history.slice(-6);
     
