@@ -52,15 +52,23 @@ export default {
           message, 
           model = 'gemini-2.0-flash-exp', 
           usePersonality = false,
-          useKnowledge = false 
+          useKnowledge = false,
+          useResearch = false 
         } = body;
         
         let enhancedMessage = message;
         
-        // Web検索機能（日付やニュースの質問で自動発動）
-        if (this.shouldSearch(message)) {
+        // 日付関連の質問の場合は現在の日付情報を追加
+        if (this.isDateQuery(message)) {
+          const dateInfo = this.getCurrentDateInfo();
+          enhancedMessage = `${message}\n\n現在の日付情報：今日は${dateInfo.fullFormatted}です。西暦${dateInfo.year}年、${dateInfo.wareki}です。この情報を使って正確に回答してください。`;
+        }
+        // リサーチモードまたは自動判定でWeb検索
+        else if (useResearch || this.shouldSearch(message)) {
           const searchResults = await this.searchWeb(message, env);
-          enhancedMessage = `${message}\n\n関連情報：\n${searchResults}\n\n上記の情報を参考に回答してください。`;
+          if (searchResults) {
+            enhancedMessage = `${message}\n\n関連情報：\n${searchResults}\n\n上記の情報を参考に回答してください。`;
+          }
         }
         
         // AIプロバイダー判定と呼び出し
@@ -104,6 +112,42 @@ export default {
       'について教えて', 'とは何', 'どういう意味'
     ];
     return searchKeywords.some(keyword => message.includes(keyword));
+  },
+
+  // 日付関連の質問かチェック
+  isDateQuery(message) {
+    const dateKeywords = ['今日', '本日', '日付', '何日', '何月', '何年'];
+    return dateKeywords.some(keyword => message.includes(keyword));
+  },
+
+  // 現在の日付情報を取得
+  getCurrentDateInfo() {
+    // 日本時間での現在時刻を取得
+    const now = new Date();
+    const jstOffset = 9 * 60; // JST は UTC+9
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const jstTime = new Date(utcTime + (jstOffset * 60000));
+    
+    const year = jstTime.getFullYear();
+    const month = jstTime.getMonth() + 1;
+    const date = jstTime.getDate();
+    const dayNames = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
+    const dayName = dayNames[jstTime.getDay()];
+    
+    // 和暦計算
+    let reiwaYear = year - 2018; // 令和元年は2019年
+    const wareki = `令和${reiwaYear}年`;
+    
+    return {
+      year: year,
+      month: month,
+      date: date,
+      dayName: dayName,
+      formatted: `${year}年${month}月${date}日（${dayName}）`,
+      wareki: wareki,
+      fullFormatted: `${wareki}（${year}年）${month}月${date}日（${dayName}）`,
+      iso: `${year}-${String(month).padStart(2, '0')}-${String(date).padStart(2, '0')}`
+    };
   },
   
   // Google Custom Search API
@@ -211,29 +255,57 @@ ${addWan ? '- 今回は語尾に「ワン」をつけてください' : '- 今�
   
   // OpenAI API
   async callOpenAI(message, model, env) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: 'system', content: 'あなたは親切で役立つアシスタントです。' },
-          { role: 'user', content: message }
-        ],
-        temperature: 0.7,
-        max_tokens: 2048
-      })
-    });
-    
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`OpenAI API error: ${error}`);
+    if (!env.OPENAI_API_KEY) {
+      throw new Error('OpenAI APIキーが設定されていません。環境変数OPENAI_API_KEYを設定してください。');
     }
-    
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || 'エラー: 応答がありません';
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: 'system', content: 'あなたは親切で役立つアシスタントです。日本語で回答してください。' },
+            { role: 'user', content: message }
+          ],
+          temperature: 0.7,
+          max_tokens: 2048
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('OpenAI API error response:', errorData);
+        
+        if (response.status === 401) {
+          throw new Error('OpenAI APIキーが無効です。正しいAPIキーを設定してください。');
+        } else if (response.status === 429) {
+          throw new Error('OpenAI APIの使用量制限に達しました。しばらく待ってから再試行してください。');
+        } else if (response.status === 400) {
+          throw new Error(`OpenAI APIリクエストエラー: ${errorData.error?.message || '不正なリクエストです'}`);
+        }
+        
+        throw new Error(`OpenAI API error (${response.status}): ${errorData.error?.message || response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.choices || data.choices.length === 0) {
+        throw new Error('OpenAI APIから応答が返されませんでした');
+      }
+      
+      return data.choices[0]?.message?.content || 'エラー: 応答がありません';
+      
+    } catch (error) {
+      console.error('OpenAI API call error:', error);
+      if (error.message.includes('fetch')) {
+        throw new Error('OpenAI APIへの接続に失敗しました。ネットワーク接続を確認してください。');
+      }
+      throw error;
+    }
   }
 };
